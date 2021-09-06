@@ -1,0 +1,278 @@
+---
+title: "MAST30034 Assignment1"
+author: "Jiacheng Zhang"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Install Required Packages (If haven't install yet, please uncomment it and run)
+```{r}
+# install.packages("ggplot2") 
+# install.packages("R.matlab") 
+# install.packages("reshape2") 
+# install.packages("pracma") 
+# install.packages("plot.matrix") 
+# install.packages("MASS")
+```
+
+## Import Libraries
+```{r}
+library("ggplot2") 
+library("R.matlab") 
+library("reshape2") 
+library("pracma") 
+library("plot.matrix") 
+library("MASS")
+```
+
+## Predefine Variables
+```{r}
+
+# number of time points
+N = 240
+
+# number of observed variables
+V = 441
+
+# the size of slice in horitanzal direction
+x1 = 21
+
+# the size of slice in vertical direction
+x2 = 21
+
+# number of sources
+nsrcs = 6
+
+```
+
+## Q1.1
+```{r}
+# onsets arrival vectors
+AV = c(0,20,0,0,0,0)
+
+# increment vector
+IV = c(30,45,60,40,40,40)
+
+# duration of ones
+Ones = c(15,20,25,15,20,25)
+
+# a function that is used to construct a single TC
+TC_constructor <- function(period,ones,N){
+  TC<-numeric(N) 
+  for(i in 1:length(period)) {
+    TC[(period[i]+1):(ones+period[i])] = c(replicate(ones,1))
+    }
+  return(TC) 
+}
+
+# Construct all the TCs with standardization
+ones_period = seq(AV[1], N-20, by=IV[1])
+TC1=TC_constructor(ones_period, Ones[1], N)
+TC1_s = (TC1-mean(TC1))/sd(TC1)
+
+ones_period = seq(AV[2], N-20, by=IV[2])
+TC2=TC_constructor(ones_period, Ones[2], N)
+TC2_s = (TC2-mean(TC2))/sd(TC2)
+
+ones_period = seq(AV[3], N-20, by=IV[3])
+TC3=TC_constructor(ones_period, Ones[3], N)
+TC3_s = (TC3-mean(TC3))/sd(TC3)
+
+ones_period = seq(AV[4], N-20, by=IV[4])
+TC4=TC_constructor(ones_period, Ones[4], N)
+TC4_s = (TC4-mean(TC4))/sd(TC4)
+
+ones_period = seq(AV[5], N-20, by=IV[5])
+TC5=TC_constructor(ones_period, Ones[5], N)
+TC5_s = (TC5-mean(TC5))/sd(TC5)
+
+ones_period = seq(AV[6], N-20, by=IV[6])
+TC6=TC_constructor(ones_period, Ones[6], N)
+TC6_s = (TC6-mean(TC6))/sd(TC6)
+
+TC=matrix(c(TC1_s,TC2_s,TC3_s,TC4_s,TC5_s,TC6_s),ncol=nsrcs)
+
+par(mfrow = c(2,3))
+for(i in 1:nsrcs){
+  plot(TC[,i],type="l",ylab=paste("TC",i))
+}
+
+```
+
+```{r}
+# perform l-2 norm to the TCs
+TC1_n = TC1/sqrt(sum(TC1^2))
+TC2_n = TC2/sqrt(sum(TC2^2))
+TC3_n = TC3/sqrt(sum(TC3^2))
+TC4_n = TC4/sqrt(sum(TC4^2))
+TC5_n = TC5/sqrt(sum(TC5^2))
+TC6_n = TC6/sqrt(sum(TC6^2))
+
+TC_n=matrix(c(TC1_n,TC2_n,TC3_n,TC4_n,TC5_n,TC6_n),ncol=nsrcs)
+
+par(mfrow = c(2,3))
+for(i in 1:nsrcs){
+  plot(TC_n[,i],type="l",ylab=paste("TC_n",i))
+}
+
+```
+
+## Q1.2
+```{r}
+CM = cor(TC)
+plot(CM)
+```
+
+## Q1.3
+```{r}
+# plot all SMs
+tmpSM = array(0, dim=c(x1,x2,nsrcs));
+SM = matrix(0,nsrcs,x1*x2);
+tmpSM[02:06,02:06,1] = 1 
+tmpSM[02:06,15:19,2] = 1 
+tmpSM[08:13,02:06,3] = 1
+tmpSM[08:13,15:19,4] = 1
+tmpSM[15:19,02:06,5] = 1
+tmpSM[15:19,15:19,6] = 1
+
+par(mfrow=c(2,3)) 
+for (i in 1:nsrcs){
+  plot(tmpSM[,,i],border=NA,xlab="", ylab="", main = "")
+}
+  
+```
+
+```{r}
+# Reshape tempSM and construct a SM
+for (i in 1:nsrcs) {
+  SM[i,] <- c(tmpSM[,,i]) 
+}
+# construct CM
+CM = cor(t(SM))
+plot(CM)
+```
+
+## Q1.4
+```{r}
+# generate zero mean with white Gaussian noise for temporal and spatial sources
+noise_t = matrix(rnorm(N*nsrcs, sd=sqrt(0.25)), N, nsrcs)
+noise_s = matrix(rnorm(nsrcs*V, sd=sqrt(0.015)), nsrcs, V)
+```
+
+```{r}
+plot(cor(noise_t))
+```
+```{r}
+plot(cor(t(noise_s)))
+```
+```{r}
+# plot the histogram of both noise sources
+hist(c(noise_t), prob = TRUE)
+curve(dnorm(x, mean=0, sd = sqrt(1.96*0.25)), col="red", lwd=2, add=TRUE)
+
+hist(c(noise_s), prob = TRUE)
+curve(dnorm(x, mean=0, sd = sqrt(1.96*0.015)), col="red", lwd=2, add=TRUE)
+```
+
+```{r}
+# see whether the product of the noise correlated across V number of variables
+noise_product_cor = cor(noise_t %*% noise_s)[200:207,200:207]
+plot(noise_product_cor)
+```
+
+## Q1.5
+```{r}
+# generate a synthetic dataset X
+X = (TC+noise_t)%*%(SM+noise_s);
+dim(TC %*% noise_s)
+dim(noise_t %*% SM)
+```
+
+```{r}
+# plot at least 100 randomly selected time-series from X
+data <- data.frame(n = 1:240, X[,sample.int(240, 100)]) 
+data_ggp <- melt(data, id.vars = "n")
+ggplot(data_ggp, aes(x=n, y=value, col = variable)) + geom_line()
+```
+```{r}
+# plot the variance of all 441 variables
+variance = 0
+for(i in 1:V){
+  variance[i] = var(X[,i])
+}
+plot(variance)
+```
+
+```{r}
+# standardize the dataset X
+X = scale(X)
+```
+
+## Q2.1
+```{r}
+
+D = TC
+# apply absolute operation on retrieved coefficient values in A
+A_LSR = abs(inv(t(D)%*%D)%*%t(D)%*%X)
+D_LSR = X %*% t(A_LSR)
+
+```
+
+```{r}
+# plot six retrieved sources using A_LSR & D_LSR
+par(mfrow = c(3,2))
+for(i in 1:3){
+  retrieved_SM = A_LSR[i,]
+  retrieved_TC = D_LSR[,i]
+  dim(retrieved_SM) = c(21,21)
+  plot(retrieved_SM, xlab="",ylab="", main=paste("Retrieved SM",i))
+  plot(retrieved_TC, type="l", xlab="", ylab="", main=paste("Retrieved TC",i))
+}
+for(i in 4:6){
+  retrieved_SM = A_LSR[i,]
+  retrieved_TC = D_LSR[,i]
+  dim(retrieved_SM) = c(21,21)
+  plot(retrieved_SM, xlab="",ylab="", main=paste("Retrieved SM",i))
+  plot(retrieved_TC, type="l", xlab="", ylab="", main=paste("Retrieved TC",i))
+}
+
+```
+
+```{r}
+# Do a scatter plot between 3rd column of D_LSR and 30th column of X
+par(mfrow = c(1,2))
+plot(D_LSR[,3],X[,30], xlab="3rd column of D_LSR", 
+     ylab="30th column of standardized X")
+plot(D_LSR[,4],X[,30], xlab="4th column of D_LSR",
+     ylab="30th column of standardized X")
+```
+
+## Q2.2
+```{r}
+
+```
+
+## R code for LR
+```{r}
+# step <- 1/(norm(TC %*% t(TC)) * 1.1)
+# thr <- rho*N*step
+# Ao <- matrix(0, nsrcs, 1)
+# A <- matrix(0, nsrcs, 1)
+# Alr <- matrix(0, nsrcs, x1*x2)
+# 
+# for (k in 1:(x1*x2)) {
+#   A <- Ao+step*(t(TC) %*% (X[,k]-(TC%*%Ao)))
+#   A <- (1/(1+thr)) * (sign(A)*pmax(replicate(nsrcs, 0), abs(A)-thr))
+#   
+#   for (i in 1:10) {
+#     Ao <- A
+#     A <- Ao+step * (t(TC)%*%(X[,k]-(TC%*%Ao)))
+#     A <- (1/(1+thr)) * (sign(A)*pmax(replicate(nsrcs, 0), abs(A)-thr))
+#   }
+#   Alr[,k] <- A
+# }
+```
+
