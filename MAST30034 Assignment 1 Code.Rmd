@@ -171,10 +171,14 @@ plot(cor(t(noise_s)))
 ```{r}
 # plot the histogram of both noise sources
 hist(c(noise_t), prob = TRUE)
-curve(dnorm(x, mean=0, sd = sqrt(1.96*0.25)), col="red", lwd=2, add=TRUE)
+curve(dnorm(x, mean=0, sd = sqrt(0.25)), col="red", lwd=2, add=TRUE)
+abline(v=1.96*sqrt(0.25), col='blue', lwd=3, lty=2)
+abline(v=-1.96*sqrt(0.25), col='blue', lwd=3, lty=2)
 
 hist(c(noise_s), prob = TRUE)
-curve(dnorm(x, mean=0, sd = sqrt(1.96*0.015)), col="red", lwd=2, add=TRUE)
+curve(dnorm(x, mean=0, sd = sqrt(0.015)), col="red", lwd=2, add=TRUE)
+abline(v=1.96*sqrt(0.015), col='blue', lwd=3, lty=2)
+abline(v=-1.96*sqrt(0.015), col='blue', lwd=3, lty=2)
 ```
 
 ```{r}
@@ -213,12 +217,10 @@ X = scale(X)
 
 ## Q2.1
 ```{r}
-
 D = TC
 # apply absolute operation on retrieved coefficient values in A
 A_LSR = abs(inv(t(D)%*%D)%*%t(D)%*%X)
 D_LSR = X %*% t(A_LSR)
-
 ```
 
 ```{r}
@@ -228,14 +230,14 @@ for(i in 1:3){
   retrieved_SM = A_LSR[i,]
   retrieved_TC = D_LSR[,i]
   dim(retrieved_SM) = c(21,21)
-  plot(retrieved_SM, xlab="",ylab="", main=paste("Retrieved SM",i))
+  plot(retrieved_SM, xlab="",ylab="", border=NA, main=paste("Retrieved SM",i))
   plot(retrieved_TC, type="l", xlab="", ylab="", main=paste("Retrieved TC",i))
 }
 for(i in 4:6){
   retrieved_SM = A_LSR[i,]
   retrieved_TC = D_LSR[,i]
   dim(retrieved_SM) = c(21,21)
-  plot(retrieved_SM, xlab="",ylab="", main=paste("Retrieved SM",i))
+  plot(retrieved_SM, xlab="",ylab="", border=NA, main=paste("Retrieved SM",i))
   plot(retrieved_TC, type="l", xlab="", ylab="", main=paste("Retrieved TC",i))
 }
 
@@ -253,26 +255,246 @@ plot(D_LSR[,4],X[,30], xlab="4th column of D_LSR",
 ## Q2.2
 ```{r}
 
+# set lambda
+lambda = 0.1
+lambda_tilde = lambda*V
+
+# construct an identity matrix
+I = matrix(0,6,6)
+diag(I) = 1
+
+A_RR = abs(inv(t(D)%*%D + lambda_tilde*I) %*% t(D)%*%X)
+D_RR = X %*% t(A_RR)
+
 ```
 
-## R code for LR
 ```{r}
-# step <- 1/(norm(TC %*% t(TC)) * 1.1)
-# thr <- rho*N*step
-# Ao <- matrix(0, nsrcs, 1)
-# A <- matrix(0, nsrcs, 1)
-# Alr <- matrix(0, nsrcs, x1*x2)
-# 
-# for (k in 1:(x1*x2)) {
-#   A <- Ao+step*(t(TC) %*% (X[,k]-(TC%*%Ao)))
-#   A <- (1/(1+thr)) * (sign(A)*pmax(replicate(nsrcs, 0), abs(A)-thr))
-#   
-#   for (i in 1:10) {
-#     Ao <- A
-#     A <- Ao+step * (t(TC)%*%(X[,k]-(TC%*%Ao)))
-#     A <- (1/(1+thr)) * (sign(A)*pmax(replicate(nsrcs, 0), abs(A)-thr))
-#   }
-#   Alr[,k] <- A
-# }
+
+# estimate two correlation vectors retaining only maximum absolute correlations
+CTLSR = 0
+for(i in 1:6){
+  CTLSR[i] = max(abs(cor(TC[,i], D_LSR[,i])))
+}
+CTRR = 0
+for(i in 1:6){
+  CTRR[i] = max(abs(cor(TC[,i], D_RR[,i])))
+}
+
+sum(CTRR)
+sum(CTLSR)
+sum(CTRR)-sum(CTLSR)
 ```
 
+```{r}
+new_lambda = 1000
+new_lambda_tilde = new_lambda*V
+
+I = matrix(0,6,6)
+diag(I) = 1
+
+new_ARR = abs(inv(t(D)%*%D + new_lambda_tilde*I) %*% t(D)%*%X)
+
+par(mfrow=c(1,2))
+plot(new_ARR[1,], main="ARR_1 with lambda = 1000")
+plot(A_LSR[1,], main="ALSR_1")
+```
+
+## Q2.3
+```{r}
+# generate 21 values of rho
+rhos = seq(0,1,0.05)
+```
+
+
+```{r}
+rho_list = 0
+mse_list = 0
+
+for(j in 1:21){
+  
+  rho = rhos[j]
+  mse = 0
+  
+  for(n in 1:10){
+    
+    # R code for LR
+    step <- 1/(norm(TC %*% t(TC)) * 1.1)
+    thr <- rho*N*step
+    Ao <- matrix(0, nsrcs, 1)
+    A <- matrix(0, nsrcs, 1)
+    Alr <- matrix(0, nsrcs, x1*x2)
+
+    for (k in 1:(x1*x2)) {
+      A <- Ao+step*(t(TC) %*% (X[,k]-(TC%*%Ao)))
+      A <- (1/(1+thr)) * (sign(A)*pmax(replicate(nsrcs, 0), abs(A)-thr))
+      for (i in 1:10) {
+        Ao <- A
+        A <- Ao+step * (t(TC)%*%(X[,k]-(TC%*%Ao)))
+        A <- (1/(1+thr)) * (sign(A)*pmax(replicate(nsrcs, 0), abs(A)-thr))
+      }
+      Alr[,k] <- A
+    }
+    
+    Dlr = X %*% t(Alr)
+    mse[n] = sum(sum((X-Dlr%*%Alr)^2))/(N*V)
+    
+    # generate a new standardized synthetic dataset X
+    new_noise_t = matrix(rnorm(N*nsrcs, sd=sqrt(0.25)), N, nsrcs)
+    new_noise_s = matrix(rnorm(nsrcs*V, sd=sqrt(0.015)), nsrcs, V)
+    X = scale((TC+new_noise_t)%*%(SM+new_noise_s))
+  }
+  
+  mse_list[j] = mean(mse)
+  print(mean(mse))
+  rho_list[j] = rho
+}
+```
+
+
+```{r}
+# plot average of MSE over 10 realizations against each value of rho
+plot(rho_list, mse_list, xlab="values of rho", ylab="average of MSE")
+```
+
+
+```{r}
+# find the value of rho that has the minimum MSE
+rho_list[which(mse_list == min(mse_list))]
+mse_list[which(mse_list == min(mse_list))]
+```
+
+## Q2.4
+```{r}
+
+rho = rho_list[which(mse_list == min(mse_list))]
+
+# R code for LR
+step <- 1/(norm(TC %*% t(TC)) * 1.1)
+thr <- rho*N*step
+Ao <- matrix(0, nsrcs, 1)
+A <- matrix(0, nsrcs, 1)
+Alr <- matrix(0, nsrcs, x1*x2)
+
+for (k in 1:(x1*x2)) {
+  A <- Ao+step*(t(TC) %*% (X[,k]-(TC%*%Ao)))
+  A <- (1/(1+thr)) * (sign(A)*pmax(replicate(nsrcs, 0), abs(A)-thr))
+  for (i in 1:10) {
+    Ao <- A
+    A <- Ao+step * (t(TC)%*%(X[,k]-(TC%*%Ao)))
+    A <- (1/(1+thr)) * (sign(A)*pmax(replicate(nsrcs, 0), abs(A)-thr))
+    }
+  Alr[,k] <- A
+}
+Dlr = X %*% t(Alr)
+
+# CTLR vs CTRR
+CTLR = 0
+for(i in 1:6){
+  CTLR[i] = max(abs(cor(TC[,i], Dlr[,i])))
+}
+
+sum(CTLR)
+sum(CTRR)
+```
+
+
+```{r}
+# CSLR vs CSRR
+CSLR = 0
+for(i in 1:6){
+  CSLR[i] = max(abs(cor(SM[i,], Alr[i,])))
+}
+
+CSRR=0
+for(i in 1:6){
+  CSRR[i] = max(abs(cor(SM[i,], A_RR[i,])))
+}
+
+sum(CSLR)
+sum(CSRR)
+```
+
+
+```{r}
+# plot side by side in form of 4 columns estimates of D and A for both RR & LR
+par(mfrow=c(6,4),mar=c(2.2,3,2.2,3))
+for(i in 1:6){
+  ARR = A_RR[i,]
+  DRR = D_RR[,i]
+  dim(ARR) = c(21,21)
+  ALR = Alr[i,]
+  DLR = Dlr[,i]
+  dim(ALR) = c(21,21)
+  plot(ARR, xlab="",ylab="", border=NA, main=paste("ARR",i))
+  plot(DRR, type="l", xlab="", ylab="", main=paste("DRR",i))
+  plot(ALR, xlab="",ylab="", border=NA, main=paste("ALR",i))
+  plot(DLR, type="l", xlab="", ylab="", main=paste("DLR",i))
+}
+```
+
+## Q2.5
+```{r}
+PCs = svd(D,6)
+# Extract Z
+Z = PCs$
+# Extract eigenvalues
+eigenValues = PCs$d
+# plot eigen values
+plot(eigenValues, ylab="eigen values")
+```
+
+```{r}
+# plot the regressors in Z and source TCs side by side
+par(mfrow=c(3,2))
+for(i in 1:3){
+  plot(Z[,i], type="l", main=paste("Z",i))
+  plot(D[,i], type="l", main=paste("TC",i))
+}
+for(i in 4:6){
+  plot(Z[,i], type="l",main=paste("Z",i))
+  plot(D[,i], type="l",main=paste("TC",i))
+}
+```
+
+
+```{r}
+#calculate APCR & DPCR
+rho = 0.001
+# R code for LR
+step <- 1/(norm(Z %*% t(Z)) * 1.1)
+thr <- rho*N*step
+Ao <- matrix(0, nsrcs, 1)
+A <- matrix(0, nsrcs, 1)
+A_PCR <- matrix(0, nsrcs, x1*x2)
+
+for (k in 1:(x1*x2)) {
+  A <- Ao+step*(t(Z) %*% (X[,k]-(Z%*%Ao)))
+  A <- (1/(1+thr)) * (sign(A)*pmax(replicate(nsrcs, 0), abs(A)-thr))
+  for (i in 1:10) {
+    Ao <- A
+    A <- Ao+step * (t(Z)%*%(X[,k]-(Z%*%Ao)))
+    A <- (1/(1+thr)) * (sign(A)*pmax(replicate(nsrcs, 0), abs(A)-thr))
+    }
+  A_PCR[,k] <- A
+}
+D_PCR = X %*% t(A_PCR)
+```
+
+```{r}
+# plot DPCR & APCR side by side
+par(mfrow = c(3,2))
+for(i in 1:3){
+  APCR = A_PCR[i,]
+  DPCR = D_PCR[,i]
+  dim(APCR) = c(21,21)
+  plot(APCR, xlab="",ylab="", border=NA, main=paste("A_PCR",i))
+  plot(DPCR, type="l", xlab="", ylab="", main=paste("D_PCR",i))
+}
+for(i in 4:6){
+   APCR = A_PCR[i,]
+  DPCR = D_PCR[,i]
+  dim(APCR) = c(21,21)
+  plot(APCR, xlab="",ylab="", border=NA, main=paste("A_PCR",i))
+  plot(DPCR, type="l", xlab="", ylab="", main=paste("D_PCR",i))
+}
+```
