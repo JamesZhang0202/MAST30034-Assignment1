@@ -434,13 +434,11 @@ for(i in 1:6){
 
 ## Q2.5
 ```{r}
-PCs = svd(D,6)
+PCs = prcomp(D,retx=T)
 # Extract Z
-Z = PCs$
-# Extract eigenvalues
-eigenValues = PCs$d
+Z = PCs$x
 # plot eigen values
-plot(eigenValues, ylab="eigen values")
+plot((PCs$sdev)^2, ylab="eigen value")
 ```
 
 ```{r}
